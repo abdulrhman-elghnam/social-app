@@ -1,17 +1,16 @@
 import React from 'react';
-import { Navigate } from 'react-router-dom';
+import { Navigate, useLocation } from 'react-router-dom';
+import { useAuthStore } from '@/store/authStore';
 
 const AuthLayer = ({ children }: React.PropsWithChildren) => {
-    if (localStorage.getItem('auth-storage')) {
-        return (
-            <div>
-                {children}
-            </div>
-        );
+    const token = useAuthStore((state) => state.token);
+    const location = useLocation();
+
+    if (!token) {
+        return <Navigate to="/login" state={{ from: location }} replace />;
     }
-    else{
-        return <Navigate to="/login" />
-    }
-}
+
+    return <>{children}</>;
+};
 
 export default AuthLayer;

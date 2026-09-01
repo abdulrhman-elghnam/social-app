@@ -1,18 +1,16 @@
 import React from 'react';
-import { Navigate } from 'react-router-dom';
+import { Navigate, useLocation } from 'react-router-dom';
+import { useAuthStore } from '@/store/authStore';
 
-const AuthSetting = ({children}:React.PropsWithChildren) => {
-    if(localStorage.getItem("auth-storage"))
-    {
-        return (
-            {children}
-        );
+const AuthSetting = ({ children }: React.PropsWithChildren) => {
+    const token = useAuthStore((state) => state.token);
+    const location = useLocation();
+
+    if (!token) {
+        return <Navigate to="/login" state={{ from: location }} replace />;
     }
-    return (
-        <div>
-            <Navigate to="/login" />
-        </div>
-    );
-}
+
+    return <>{children}</>;
+};
 
 export default AuthSetting;

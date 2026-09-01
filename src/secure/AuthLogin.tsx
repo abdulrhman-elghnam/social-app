@@ -1,16 +1,15 @@
 import React from 'react';
 import { Navigate } from 'react-router-dom';
+import { useAuthStore } from '@/store/authStore';
 
-const AuthLogin = ({children}:React.PropsWithChildren) => {
-    if (localStorage.getItem('auth-storage')) {
-        return (
-            <Navigate to="/home" />
-        );
-    } else {
-        return <>
-        {children}
-        </>
+const AuthLogin = ({ children }: React.PropsWithChildren) => {
+    const token = useAuthStore((state) => state.token);
+    
+    if (token) {
+        return <Navigate to="/feed" replace />;
     }
-}
+    
+    return <>{children}</>;
+};
 
 export default AuthLogin;

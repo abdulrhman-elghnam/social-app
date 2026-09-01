@@ -1,13 +1,14 @@
-import { cn } from "@/lib/utils"
-import { Button } from "@/components/ui/button"
+import { useState } from "react";
+import { cn } from "@/lib/utils";
+import { Button } from "@/components/ui/button";
 import {
     Card,
     CardContent,
     CardDescription,
     CardHeader,
     CardTitle,
-} from "@/components/ui/card"
-import { Input } from "@/components/ui/input"
+} from "@/components/ui/card";
+import { Input } from "@/components/ui/input";
 import {
     Form,
     FormControl,
@@ -15,203 +16,281 @@ import {
     FormItem,
     FormLabel,
     FormMessage,
-} from "@/components/ui/form"
-import { zodResolver } from "@hookform/resolvers/zod"
-import { useForm } from "react-hook-form"
-import { z } from "zod"
+} from "@/components/ui/form";
+import { zodResolver } from "@hookform/resolvers/zod";
+import { useForm } from "react-hook-form";
+import { z } from "zod";
+import { useMutation } from "@tanstack/react-query";
+import { setLogin } from "@/api/Auth-User.API";
+import type { UserLoginType } from "@/types/validation";
+import { Link, useNavigate } from "react-router-dom";
+import { toast } from "sonner";
+import { useAuthStore } from "@/store/authStore";
+import { ShareIcon } from "@/assets/icons/share-icon";
+import { Eye, EyeOff, Loader2, Shield, Users, ArrowRight } from "lucide-react";
 
-import { useMutation } from "@tanstack/react-query"
-import { setLogin } from "@/api123/Auth-User.API"
-import type { UserLoginType } from "@/types/validation"
-import { Link, useNavigate } from "react-router-dom"
-import { toast, Toaster } from "sonner"
-import { useAuthStore } from "@/store/authStore"
-
+import { ThemeToggle } from "./ThemeToggle";
 
 export const FormLoginSchema = z.object({
-    email: z
-        .string()
-        .email({ message: "Invalid email address" }),
-
+    email: z.string().email({ message: "Please enter a valid email address" }),
     password: z
         .string()
-        .min(8, { message: "Password must be at least 8 characters" })
-        .regex(
-            /^(?=.*[a-z])(?=.*[A-Z])(?=.*\d)(?=.*[@$!%*?&])/,
-            {
-                message:
-                    "Password must contain uppercase, lowercase, number, and special character",
-            }
-        ),
+        .min(1, { message: "Password is required" }),
 });
 
-export function LoginForm({
-    className,
-    ...props
-}: React.ComponentProps<"div">) {
+export function LoginForm({ className, ...props }: React.ComponentProps<"div">) {
+    const [showPassword, setShowPassword] = useState(false);
+    const navigate = useNavigate();
+    const { setUser, setToken } = useAuthStore();
+
     const form = useForm<z.infer<typeof FormLoginSchema>>({
         resolver: zodResolver(FormLoginSchema),
         defaultValues: {
             email: "",
             password: "",
         },
-    })
+    });
 
-    const nav = useNavigate()
     const { mutate, isPending } = useMutation({
-        mutationKey: ["signUp"],
-        retry: 2,
-
+        mutationKey: ["login"],
         mutationFn: (data: z.infer<typeof FormLoginSchema>) => {
             const fixedData: UserLoginType = {
                 login: data.email,
                 password: data.password,
-            }
-            console.log(data);
+            };
             return setLogin(fixedData);
         },
-        onSuccess: (data) => {
-            toast.success("Welcome")
-            toast.dismiss("toastId")
-            setUser(data.data)
-            setToken(data.data)
-            console.log(data);
-            form.reset()
-            setTimeout(() => {
-                nav("/home")
-            });
-        },
-        onError: (error) => {
-            console.log(error.message);
-            toast.error("Check your input")
-            toast.dismiss("toastId")
-        },
         onMutate: () => {
-            toast.loading("Logging in...", { id: "toastId" })
-        }
-    })
-
-
-    const setUser = useAuthStore(state => state.setUser)
-    const setToken = useAuthStore(state => state.setToken)
-
+            toast.loading("Signing you in...", { id: "login-toast" });
+        },
+        onSuccess: (data) => {
+            toast.success("Welcome back!", { id: "login-toast" });
+            setUser(data.data);
+            setToken(data.data);
+            form.reset();
+            navigate("/feed", { replace: true });
+        },
+        onError: (error: any) => {
+            const msg = error?.response?.data?.message || "Invalid email or password. Please try again.";
+            toast.error(msg, { id: "login-toast" });
+        },
+    });
 
     return (
-        <>
-            <Toaster />
-            <div className={cn("grid min-h-svh lg:grid-cols-2", className)} {...props}>
-                <div className="flex flex-col gap-4 p-6 md:p-10">
-                    <div className="flex flex-1 items-center justify-center">
-                        <div className="w-full max-w-sm">
-                            <Card>
-                                <CardHeader>
-                                    <CardTitle className="text-2xl">Welcome to our platform</CardTitle>
-                                    <CardDescription>
-                                        Enter your details below to login to your account
-                                    </CardDescription>
-                                </CardHeader>
-                                <CardContent>
-                                    <Form {...form}>
-                                        <form onSubmit={form.handleSubmit((data) => { mutate(data) })} className="space-y-6">
+        <div className={cn("grid min-h-screen lg:grid-cols-2 bg-slate-50 dark:bg-slate-950", className)} {...props}>
+            {/* Left Side: Form Container */}
+            <div className="flex flex-col justify-between p-6 md:p-10">
+                {/* Header / Brand */}
+                <div className="flex items-center justify-between">
+                    <Link to="/" className="flex items-center gap-2.5 group">
+                        <div className="bg-gradient-to-tr from-blue-600 to-indigo-600 p-2 rounded-xl text-white shadow-md shadow-blue-500/20">
+                            <ShareIcon size={20} />
+                        </div>
+                        <span className="font-extrabold text-xl tracking-tight bg-gradient-to-r from-blue-600 to-indigo-600 dark:from-blue-400 dark:to-indigo-400 bg-clip-text text-transparent">
+                            SocialSphere
+                        </span>
+                    </Link>
+                    <ThemeToggle />
+                </div>
 
-                                            <FormField
-                                                control={form.control}
-                                                name="email"
-                                                render={({ field }) => (
-                                                    <FormItem>
-                                                        <FormLabel>Email</FormLabel>
-                                                        <FormControl>
-                                                            <Input placeholder="m@example.com" type="email" {...field} />
-                                                        </FormControl>
-                                                        <FormMessage className="text-xs" />
-                                                    </FormItem>
-                                                )}
-                                            />
+                {/* Main Card */}
+                <div className="flex flex-1 items-center justify-center my-8">
+                    <div className="w-full max-w-sm">
+                        <Card className="border border-slate-200/80 dark:border-slate-800 shadow-xl bg-white dark:bg-slate-900 rounded-3xl p-2 sm:p-4">
+                            <CardHeader className="space-y-1">
+                                <CardTitle className="text-2xl font-extrabold tracking-tight text-slate-900 dark:text-slate-100">
+                                    Welcome back
+                                </CardTitle>
+                                <CardDescription className="text-xs text-slate-500 dark:text-slate-400">
+                                    Enter your credentials to access your feed and friends
+                                </CardDescription>
+                            </CardHeader>
+                            <CardContent>
+                                <Form {...form}>
+                                    <form
+                                        onSubmit={form.handleSubmit((data) => mutate(data))}
+                                        className="space-y-4"
+                                    >
+                                        <FormField
+                                            control={form.control}
+                                            name="email"
+                                            render={({ field }) => (
+                                                <FormItem>
+                                                    <FormLabel className="text-xs font-bold text-slate-700 dark:text-slate-300">
+                                                        Email Address
+                                                    </FormLabel>
+                                                    <FormControl>
+                                                        <Input
+                                                            placeholder="name@example.com"
+                                                            type="email"
+                                                            className="h-11 rounded-xl text-xs"
+                                                            {...field}
+                                                        />
+                                                    </FormControl>
+                                                    <FormMessage className="text-xs text-red-500" />
+                                                </FormItem>
+                                            )}
+                                        />
 
-                                            <div className="grid gap-4">
-                                                <FormField
-                                                    control={form.control}
-                                                    name="password"
-                                                    render={({ field }) => (
-                                                        <FormItem>
-                                                            <FormLabel>Password</FormLabel>
-                                                            <FormControl>
-                                                                <Input type="password" placeholder="Password" {...field} />
-                                                            </FormControl>
-                                                            <FormMessage className="text-xs" />
-                                                        </FormItem>
-                                                    )}
-                                                />
-                                            </div>
-                                            <Button type="submit" className={cn("w-full")} disabled={isPending} >
-                                                login
+                                        <FormField
+                                            control={form.control}
+                                            name="password"
+                                            render={({ field }) => (
+                                                <FormItem>
+                                                    <FormLabel className="text-xs font-bold text-slate-700 dark:text-slate-300">
+                                                        Password
+                                                    </FormLabel>
+                                                    <FormControl>
+                                                        <div className="relative">
+                                                            <Input
+                                                                type={showPassword ? "text" : "password"}
+                                                                placeholder="••••••••"
+                                                                className="h-11 rounded-xl pr-10 text-xs"
+                                                                {...field}
+                                                            />
+                                                            <button
+                                                                type="button"
+                                                                onClick={() => setShowPassword(!showPassword)}
+                                                                className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600 dark:hover:text-slate-200"
+                                                                aria-label="Toggle password visibility"
+                                                            >
+                                                                {showPassword ? (
+                                                                    <EyeOff className="w-4 h-4" />
+                                                                ) : (
+                                                                    <Eye className="w-4 h-4" />
+                                                                )}
+                                                            </button>
+                                                        </div>
+                                                    </FormControl>
+                                                    <FormMessage className="text-xs text-red-500" />
+                                                </FormItem>
+                                            )}
+                                        />
+
+                                        <Button
+                                            type="submit"
+                                            className="w-full h-11 bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-700 hover:to-indigo-700 text-white font-bold rounded-xl shadow-md shadow-blue-500/20 text-xs transition-all active:scale-98"
+                                            disabled={isPending}
+                                        >
+                                            {isPending ? (
+                                                <>
+                                                    <Loader2 className="w-4 h-4 animate-spin mr-1.5" />
+                                                    <span>Signing in...</span>
+                                                </>
+                                            ) : (
+                                                <>
+                                                    <span>Sign In</span>
+                                                    <ArrowRight className="w-4 h-4 ml-1.5" />
+                                                </>
+                                            )}
+                                        </Button>
+
+                                        <div className="relative text-center text-xs after:absolute after:inset-0 after:top-1/2 after:z-0 after:flex after:items-center after:border-t after:border-slate-200 dark:after:border-slate-800">
+                                            <span className="relative z-10 bg-white dark:bg-slate-900 px-2 text-slate-400 font-medium">
+                                                or continue with
+                                            </span>
+                                        </div>
+
+                                        <div className="grid grid-cols-2 gap-3">
+                                            <Button
+                                                variant="outline"
+                                                className="w-full h-10 rounded-xl text-xs font-semibold border-slate-200 dark:border-slate-800"
+                                                type="button"
+                                                onClick={() => toast.info("Social login simulated")}
+                                            >
+                                                <svg className="h-4 w-4 mr-2" viewBox="0 0 24 24">
+                                                    <path
+                                                        fill="#4285F4"
+                                                        d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92c-.26 1.37-1.04 2.53-2.21 3.31v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.09z"
+                                                    />
+                                                    <path
+                                                        fill="#34A853"
+                                                        d="M12 23c2.97 0 5.46-.98 7.28-2.66l-3.57-2.77c-.98.66-2.23 1.06-3.71 1.06-2.86 0-5.29-1.93-6.16-4.53H2.18v2.84C3.99 20.53 7.7 23 12 23z"
+                                                    />
+                                                    <path
+                                                        fill="#FBBC05"
+                                                        d="M5.84 14.09c-.22-.66-.35-1.36-.35-2.09s.13-1.43.35-2.09V7.06H2.18C1.43 8.55 1 10.22 1 12s.43 3.45 1.18 4.94l2.85-2.22.81-.63z"
+                                                    />
+                                                    <path
+                                                        fill="#EA4335"
+                                                        d="M12 5.38c1.62 0 3.06.56 4.21 1.64l3.15-3.15C17.45 2.09 14.97 1 12 1 7.7 1 3.99 3.47 2.18 7.06l3.66 2.84c.87-2.6 3.3-4.52 6.16-4.52z"
+                                                    />
+                                                </svg>
+                                                Google
                                             </Button>
 
-                                            <div className="relative text-center text-sm after:absolute after:inset-0 after:top-1/2 after:z-0 after:flex after:items-center after:border-t after:border-border">
-                                                <span className="relative z-10 bg-background px-2 text-muted-foreground">
-                                                    or continue with
-                                                </span>
-                                            </div>
+                                            <Button
+                                                variant="outline"
+                                                className="w-full h-10 rounded-xl text-xs font-semibold border-slate-200 dark:border-slate-800"
+                                                type="button"
+                                                onClick={() => toast.info("Social login simulated")}
+                                            >
+                                                <svg className="h-4 w-4 mr-2 fill-current" viewBox="0 0 24 24">
+                                                    <path d="M12.152 6.896c-.948 0-2.415-1.078-3.96-1.04-2.04.027-3.91 1.183-4.961 3.014-2.117 3.675-.546 9.103 1.519 12.09 1.013 1.454 2.208 3.09 3.792 3.039 1.52-.065 2.09-.987 3.935-.987 1.831 0 2.35.987 3.96.948 1.637-.026 2.676-1.48 3.676-2.948 1.156-1.688 1.636-3.325 1.662-3.415-.039-.013-3.182-1.221-3.22-4.857-.026-3.04 2.48-4.494 2.597-4.559-1.429-2.09-3.623-2.324-4.39-2.376-2-.156-3.675 1.09-4.61 1.09zM15.53 3.83c.843-1.012 1.4-2.427 1.245-3.83-1.207.052-2.662.805-3.532 1.818-.78.896-1.454 2.338-1.273 3.714 1.338.104 2.715-.688 3.559-1.701" />
+                                                </svg>
+                                                Apple
+                                            </Button>
+                                        </div>
 
-                                            <div className="grid grid-cols-3 gap-4">
-                                                <Button variant="outline" className="w-full" type="button">
-                                                    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" className="h-5 w-5">
-                                                        <path
-                                                            d="M12.152 6.896c-.948 0-2.415-1.078-3.96-1.04-2.04.027-3.91 1.183-4.961 3.014-2.117 3.675-.546 9.103 1.519 12.09 1.013 1.454 2.208 3.09 3.792 3.039 1.52-.065 2.09-.987 3.935-.987 1.831 0 2.35.987 3.96.948 1.637-.026 2.676-1.48 3.676-2.948 1.156-1.688 1.636-3.325 1.662-3.415-.039-.013-3.182-1.221-3.22-4.857-.026-3.04 2.48-4.494 2.597-4.559-1.429-2.09-3.623-2.324-4.39-2.376-2-.156-3.675 1.09-4.61 1.09zM15.53 3.83c.843-1.012 1.4-2.427 1.245-3.83-1.207.052-2.662.805-3.532 1.818-.78.896-1.454 2.338-1.273 3.714 1.338.104 2.715-.688 3.559-1.701"
-                                                            fill="currentColor"
-                                                        />
-                                                    </svg>
-                                                    <span className="sr-only">Login with Apple</span>
-                                                </Button>
-                                                <Button variant="outline" className="w-full" type="button">
-                                                    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" className="h-5 w-5">
-                                                        <path
-                                                            d="M12.48 10.92v3.28h7.84c-.24 1.84-.853 3.187-1.787 4.133-1.147 1.147-2.933 2.4-6.053 2.4-4.827 0-8.6-3.893-8.6-8.72s3.773-8.72 8.6-8.72c2.6 0 4.507 1.027 5.907 2.347l2.307-2.307C18.747 1.44 16.133 0 12.48 0 5.867 0 .307 5.387.307 12s5.56 12 12.173 12c3.573 0 6.267-1.173 8.373-3.36 2.16-2.16 2.84-5.213 2.84-7.667 0-.76-.053-1.467-.173-2.053H12.48z"
-                                                            fill="currentColor"
-                                                        />
-                                                    </svg>
-                                                    <span className="sr-only">Login with Google</span>
-                                                </Button>
-                                                <Button variant="outline" className="w-full" type="button">
-                                                    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" className="h-5 w-5">
-                                                        <path
-                                                            d="M6.915 4.03c-1.968 0-3.683 1.28-4.871 3.113C.704 9.208 0 11.883 0 14.449c0 .706.07 1.369.21 1.973a6.624 6.624 0 0 0 .265.86 5.297 5.297 0 0 0 .371.761c.696 1.159 1.818 1.927 3.593 1.927 1.497 0 2.633-.671 3.965-2.444.76-1.012 1.144-1.626 2.663-4.32l.756-1.339.186-.325c.061.1.121.196.183.3l2.152 3.595c.724 1.21 1.665 2.556 2.47 3.314 1.046.987 1.992 1.22 3.06 1.22 1.075 0 1.876-.355 2.455-.843a3.743 3.743 0 0 0 .81-.973c.542-.939.861-2.127.861-3.745 0-2.72-.681-5.357-2.084-7.45-1.282-1.912-2.957-2.93-4.716-2.93-1.047 0-2.088.467-3.053 1.308-.652.57-1.257 1.29-1.82 2.05-.69-.875-1.335-1.547-1.958-2.056-1.182-.966-2.315-1.303-3.454-1.303zm10.16 2.053c1.147 0 2.188.758 2.992 1.999 1.132 1.748 1.647 4.195 1.647 6.4 0 1.548-.368 2.9-1.839 2.9-.58 0-1.027-.23-1.664-1.004-.496-.601-1.343-1.878-2.832-4.358l-.617-1.028a44.908 44.908 0 0 0-1.255-1.98c.07-.109.141-.224.211-.327 1.12-1.667 2.118-2.602 3.358-2.602zm-10.201.553c1.265 0 2.058.758 2.675 1.446.307.327.737.871 1.234 1.579l-1.02 1.566c-.757 1.163-1.882 3.017-2.837 4.338-1.191 1.649-1.81 1.817-2.486 1.817-.524 0-1.038-.237-1.383-.794-.263-.426-.464-1.13-.464-2.046 0-2.221.63-4.535 1.66-6.088.454-.687.964-1.226 1.533-1.533a2.264 2.264 0 0 1 1.088-.285z"
-                                                            fill="currentColor"
-                                                        />
-                                                    </svg>
-                                                    <span className="sr-only">Login with Meta</span>
-                                                </Button>
-                                            </div>
+                                        <div className="text-center text-xs text-slate-500 pt-2">
+                                            Don&apos;t have an account?{" "}
+                                            <Link
+                                                to="/signup"
+                                                className="font-bold text-blue-600 dark:text-blue-400 hover:underline"
+                                            >
+                                                Create Account
+                                            </Link>
+                                        </div>
+                                    </form>
+                                </Form>
+                            </CardContent>
+                        </Card>
+                    </div>
+                </div>
 
-                                            <div className="text-center text-sm">
-                                                <p className="text-muted-foreground text-center text-sm">
-                                                    Don&apos;t have an account?{" "}
-                                                    <Link to="/signup" className="underline underline-offset-4 hover:text-primary">
-                                                        Sign Up
-                                                    </Link>
-                                                </p>
+                {/* Footer */}
+                <div className="text-center text-[11px] text-slate-400">
+                    By signing in, you agree to our Terms of Service and Privacy Policy.
+                </div>
+            </div>
 
-                                            </div>
-                                        </form>
-                                    </Form>
-                                </CardContent>
-                            </Card>
-                            <div className="mt-4 text-center text-xs text-muted-foreground [&_a]:underline [&_a]:underline-offset-4 [&_a]:hover:text-primary">
-                                By clicking continue, you agree to our <span className="hover:underline mx-1 font-bold"> Terms of Service </span>
-                                and <span className="hover:underline mx-1 font-bold"> Privacy Policy. </span>
-                            </div>
+            {/* Right Side: Hero Visual & Branding */}
+            <div className="hidden lg:flex flex-col justify-between p-12 bg-gradient-to-br from-blue-600 via-indigo-600 to-violet-700 text-white relative overflow-hidden">
+                <div className="absolute top-0 right-0 w-96 h-96 bg-white/10 rounded-full blur-3xl -translate-y-1/2 translate-x-1/2 pointer-events-none" />
+                <div className="absolute bottom-0 left-0 w-96 h-96 bg-indigo-900/40 rounded-full blur-3xl translate-y-1/2 -translate-x-1/2 pointer-events-none" />
+
+                <div className="relative z-10 flex items-center gap-2">
+                    <span className="px-3 py-1 rounded-full text-xs font-bold bg-white/15 backdrop-blur-md border border-white/20">
+                        ⚡ Welcome to Next-Gen Social
+                    </span>
+                </div>
+
+                <div className="relative z-10 max-w-lg space-y-6">
+                    <h1 className="text-4xl xl:text-5xl font-extrabold tracking-tight leading-tight">
+                        Share moments. Build real connections.
+                    </h1>
+                    <p className="text-base text-white/85 leading-relaxed">
+                        Join millions worldwide sharing stories, exchanging thoughts, and discovering creative communities in real-time.
+                    </p>
+
+                    <div className="grid grid-cols-2 gap-4 pt-4">
+                        <div className="p-4 rounded-2xl bg-white/10 backdrop-blur-md border border-white/15">
+                            <Shield className="w-6 h-6 mb-2 text-blue-200" />
+                            <h3 className="font-bold text-sm">Privacy First</h3>
+                            <p className="text-xs text-white/75 mt-1">Granular control over who sees every post</p>
+                        </div>
+                        <div className="p-4 rounded-2xl bg-white/10 backdrop-blur-md border border-white/15">
+                            <Users className="w-6 h-6 mb-2 text-indigo-200" />
+                            <h3 className="font-bold text-sm">Global Reach</h3>
+                            <p className="text-xs text-white/75 mt-1">Follow creators and expand your horizons</p>
                         </div>
                     </div>
                 </div>
-                <div className="bg-primary hidden lg:flex flex-col justify-center items-center text-white p-10">
-                    <h1 className="text-4xl font-bold mb-4">
-                        Stay connected with people you care about
-                    </h1>
-                    <p className="text-lg text-white/90 text-center max-w-md">
-                        Share moments, follow friends, and build real connections — all in one place.
-                    </p>
+
+                <div className="relative z-10 text-xs text-white/60">
+                    © 2026 SocialSphere. All rights reserved.
                 </div>
             </div>
-        </>
-    )
+        </div>
+    );
 }

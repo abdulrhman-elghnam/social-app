@@ -1,9 +1,5 @@
-import React from 'react'
+import { Navigate } from "react-router-dom";
 
 export default function Home() {
-  return (
-    <React.Fragment>
-      <p>Home</p>
-    </React.Fragment>
-  )
+    return <Navigate to="/feed" replace />;
 }

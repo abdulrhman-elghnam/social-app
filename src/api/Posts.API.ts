@@ -55,11 +55,11 @@ export function getHomeFeed(params?: FeedParams) {
     });
 }
 
-export function createPost(data: FormData) {
+export function createPost(data: FormData | { body: string }) {
     return axios.post(`${url}/posts`, data, {
         headers: {
             Authorization: `Bearer ${getToken()}`,
-            "Content-Type": "multipart/form-data",
+            ...(data instanceof FormData ? { "Content-Type": "multipart/form-data" } : {}),
         },
     });
 }
@@ -89,14 +89,6 @@ export function updatePost(postId: string, data: FormData) {
     });
 }
 
-export function deletePost(postId: string) {
-    return axios.delete(`${url}/posts/${postId}`, {
-        headers: {
-            Authorization: `Bearer ${getToken()}`,
-        },
-    });
-}
-
 export function toggleLikePost(postId: string) {
     return axios.put(`${url}/posts/${postId}/like`, {}, {
         headers: {
@@ -107,14 +99,6 @@ export function toggleLikePost(postId: string) {
 
 export function toggleBookmarkPost(postId: string) {
     return axios.put(`${url}/posts/${postId}/bookmark`, {}, {
-        headers: {
-            Authorization: `Bearer ${getToken()}`,
-        },
-    });
-}
-
-export function sharePost(postId: string, data?: any) {
-    return axios.post(`${url}/posts/${postId}/share`, data || {}, {
         headers: {
             Authorization: `Bearer ${getToken()}`,
         },

@@ -1,16 +1,29 @@
-import React, { useState } from 'react';
+import React, { useState } from "react";
 import { Card, CardContent } from "@/components/ui/card";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { Button } from "@/components/ui/button";
 import {
-    Heart, MessageCircle, Share2, Bookmark,
-    MoreHorizontal, Send, Loader2, Pencil, Trash2,
-    Check, X, Globe, Lock, Users
+    Heart,
+    MessageCircle,
+    Share2,
+    Bookmark,
+    MoreHorizontal,
+    Send,
+    Loader2,
+    Pencil,
+    Check,
+    X,
+    Globe,
+    Lock,
+    Users,
+    Copy,
+    ExternalLink,
+    Maximize2,
 } from "lucide-react";
 import { formatDistanceToNow } from "date-fns";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { toggleLikePost, toggleBookmarkPost, updatePost, deletePost } from "@/api123/Posts.API";
-import { getPostComments, createComment } from "@/api123/Comments-Replies.API";
+import { toggleLikePost, toggleBookmarkPost, updatePost } from "@/api/Posts.API";
+import { getPostComments, createComment } from "@/api/Comments-Replies.API";
 import { cn } from "@/lib/utils";
 import { useAuthStore } from "@/store/authStore";
 import {
@@ -28,60 +41,74 @@ interface PostItemProps {
 }
 
 const privacyIcon = (type: string) => {
-    if (type === "private") return <Lock className="w-3 h-3" />;
-    if (type === "friends") return <Users className="w-3 h-3" />;
-    return <Globe className="w-3 h-3" />;
+    if (type === "private" || type === "onlyme") return <Lock className="w-3 h-3 text-amber-500" />;
+    if (type === "friends") return <Users className="w-3 h-3 text-green-500" />;
+    return <Globe className="w-3 h-3 text-blue-500" />;
 };
 
 const privacyLabel = (type: string) => {
-    if (type === "private") return "Only me";
+    if (type === "private" || type === "onlyme") return "Only me";
     if (type === "friends") return "Friends";
     return "Public";
 };
 
 export default function PostItem({ post }: PostItemProps) {
-    const author = post.user || {};
+    const author =
+        (typeof post.user === "object" && post.user) ||
+        post.userDetails ||
+        post.author ||
+        post.createdBy ||
+        {};
     const { user } = useAuthStore();
     const queryClient = useQueryClient();
     const postId = post._id || post.id;
-    const currentUserId = (user as any)?.user?._id || (user as any)?._id || (user as any)?.id;
-    const authorId = author?._id || author?.id;
-    const isMyPost = currentUserId && authorId && currentUserId === authorId;
+    const currentUserId = (user as any)?._id || (user as any)?.id || (user as any)?.user?._id;
+    const authorId =
+        author?._id ||
+        author?.id ||
+        (typeof post.user === "string" ? post.user : undefined) ||
+        (typeof post.userId === "string" ? post.userId : post.userId?._id || post.userId?.id);
+    const isMyPost = Boolean(currentUserId && authorId && currentUserId === authorId);
     const navigate = useNavigate();
 
     const goToAuthorProfile = () => {
         if (!authorId) return;
         if (isMyPost) {
-            navigate('/Profile');
+            navigate("/profile");
         } else {
             navigate(`/user/${authorId}`);
         }
     };
 
-    // ─── Like & Bookmark state ───────────────────────────────────────────────
+    // ─── Like & Bookmark State ───────────────────────────────────────────────
     const extractIsLiked = () => {
         if (typeof post.isLiked === "boolean") return post.isLiked;
-        if (Array.isArray(post.likes)) return post.likes.some((id: any) => id === currentUserId || id._id === currentUserId);
+        if (Array.isArray(post.likes)) {
+            return post.likes.some((id: any) => id === currentUserId || id?._id === currentUserId);
+        }
         return false;
     };
 
     const [isLiked, setIsLiked] = useState<boolean>(extractIsLiked());
-    const [likesCount, setLikesCount] = useState<number>(post.likesCount || (Array.isArray(post.likes) ? post.likes.length : 0));
+    const [likesCount, setLikesCount] = useState<number>(
+        post.likesCount || (Array.isArray(post.likes) ? post.likes.length : 0)
+    );
     const [isSaved, setIsSaved] = useState<boolean>(false);
+    const [likeBouncing, setLikeBouncing] = useState(false);
 
     // ─── Comments ────────────────────────────────────────────────────────────
     const [showComments, setShowComments] = useState<boolean>(false);
     const [commentText, setCommentText] = useState("");
 
-    // ─── Edit state ──────────────────────────────────────────────────────────
+    // ─── Edit State ──────────────────────────────────────────────────────────
     const [isEditing, setIsEditing] = useState(false);
     const [editBody, setEditBody] = useState(post.body || "");
     const [editImageFile, setEditImageFile] = useState<File | null>(null);
     const [editImagePreview, setEditImagePreview] = useState<string | null>(null);
     const editFileRef = React.useRef<HTMLInputElement>(null);
 
-    // ─── Delete dialog ───────────────────────────────────────────────────────
-    const [showDeleteDialog, setShowDeleteDialog] = useState(false);
+    // ─── Delete & Lightbox Dialogs ───────────────────────────────────────────
+    const [showLightbox, setShowLightbox] = useState(false);
 
     const formattedTime = post.createdAt
         ? formatDistanceToNow(new Date(post.createdAt), { addSuffix: true })
@@ -92,28 +119,42 @@ export default function PostItem({ post }: PostItemProps) {
     const likeMutation = useMutation({
         mutationFn: () => toggleLikePost(postId),
         onMutate: () => {
+            setLikeBouncing(true);
+            setTimeout(() => setLikeBouncing(false), 400);
             const next = !isLiked;
             setIsLiked(next);
-            setLikesCount(p => next ? p + 1 : Math.max(0, p - 1));
+            setLikesCount((p) => (next ? p + 1 : Math.max(0, p - 1)));
         },
         onError: () => {
             const prev = !isLiked;
             setIsLiked(prev);
-            setLikesCount(p => prev ? p + 1 : Math.max(0, p - 1));
+            setLikesCount((p) => (prev ? p + 1 : Math.max(0, p - 1)));
+            toast.error("Failed to update like");
         },
     });
 
     const saveMutation = useMutation({
         mutationFn: () => toggleBookmarkPost(postId),
-        onMutate: () => setIsSaved(p => !p),
-        onError: () => setIsSaved(p => !p),
+        onMutate: () => {
+            const next = !isSaved;
+            setIsSaved(next);
+            toast.success(next ? "Post saved to bookmarks!" : "Post removed from bookmarks");
+        },
+        onError: () => {
+            setIsSaved((p) => !p);
+            toast.error("Failed to update bookmark");
+        },
     });
 
     const commentMutation = useMutation({
         mutationFn: (text: string) => createComment(postId, { content: text }),
         onSuccess: () => {
             setCommentText("");
-            queryClient.invalidateQueries({ queryKey: ['comments', postId] });
+            queryClient.invalidateQueries({ queryKey: ["comments", postId] });
+            toast.success("Comment added!");
+        },
+        onError: () => {
+            toast.error("Failed to post comment");
         },
     });
 
@@ -126,11 +167,12 @@ export default function PostItem({ post }: PostItemProps) {
         },
         onMutate: () => toast.loading("Updating post...", { id: "update-post" }),
         onSuccess: () => {
-            toast.success("Post updated!", { id: "update-post" });
+            toast.success("Post updated successfully!", { id: "update-post" });
             setIsEditing(false);
             setEditImageFile(null);
             setEditImagePreview(null);
             queryClient.invalidateQueries({ queryKey: ["allPosts"] });
+            queryClient.invalidateQueries({ queryKey: ["userPosts"] });
             queryClient.invalidateQueries({ queryKey: ["homeFeed"] });
         },
         onError: (err: any) => {
@@ -139,21 +181,10 @@ export default function PostItem({ post }: PostItemProps) {
         },
     });
 
-    const deleteMutation = useMutation({
-        mutationFn: () => deletePost(postId),
-        onMutate: () => toast.loading("Deleting post...", { id: "delete-post" }),
-        onSuccess: () => {
-            toast.success("Post deleted", { id: "delete-post" });
-            queryClient.invalidateQueries({ queryKey: ["allPosts"] });
-            queryClient.invalidateQueries({ queryKey: ["homeFeed"] });
-        },
-        onError: () => toast.error("Failed to delete post", { id: "delete-post" }),
-    });
-
     // ─── Comments Fetching ───────────────────────────────────────────────────
     const { data: commentsData, isLoading: loadingComments } = useQuery({
-        queryKey: ['comments', postId],
-        queryFn: () => getPostComments(postId, { limit: 10 }),
+        queryKey: ["comments", postId],
+        queryFn: () => getPostComments(postId, { limit: 15 }),
         enabled: showComments,
     });
 
@@ -168,7 +199,7 @@ export default function PostItem({ post }: PostItemProps) {
     const handleCommentSubmit = (e: React.FormEvent) => {
         e.preventDefault();
         if (!commentText.trim()) return;
-        commentMutation.mutate(commentText);
+        commentMutation.mutate(commentText.trim());
     };
 
     const handleEditImageChange = (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -182,70 +213,114 @@ export default function PostItem({ post }: PostItemProps) {
         setIsEditing(false);
         setEditBody(post.body || "");
         setEditImageFile(null);
-        if (editImagePreview) { URL.revokeObjectURL(editImagePreview); setEditImagePreview(null); }
+        if (editImagePreview) {
+            URL.revokeObjectURL(editImagePreview);
+            setEditImagePreview(null);
+        }
     };
 
-    // ─── Render ───────────────────────────────────────────────────────────────
+    const handleShare = async () => {
+        const shareUrl = `${window.location.origin}/user/${authorId || ""}`;
+        if (navigator.share) {
+            try {
+                await navigator.share({
+                    title: `${author?.name || "User"}'s Post on SocialSphere`,
+                    text: post.body || "Check out this post on SocialSphere",
+                    url: shareUrl,
+                });
+                return;
+            } catch {
+                // fallback to copy
+            }
+        }
+        navigator.clipboard.writeText(shareUrl);
+        toast.success("Link copied to clipboard!");
+    };
+
     return (
         <>
-            <Card className={cn(
-                "w-full border-none shadow-md overflow-hidden bg-white dark:bg-zinc-950 transition-opacity",
-                deleteMutation.isPending && "opacity-50 pointer-events-none"
-            )}>
+            <Card
+                className={cn(
+                    "w-full border border-slate-200/80 dark:border-slate-800 shadow-xs bg-white dark:bg-slate-900 rounded-2xl overflow-hidden transition-all duration-200 hover:border-slate-300 dark:hover:border-slate-700",
+                    updateMutation.isPending && "opacity-70 pointer-events-none"
+                )}
+            >
                 <CardContent className="p-0">
                     {/* ── Post Header ── */}
-                    <div className="p-4 sm:p-5 flex items-start justify-between">
-                        <div className="flex items-center gap-3">
-                            <button onClick={goToAuthorProfile} className="shrink-0 rounded-full focus:outline-none focus-visible:ring-2 focus-visible:ring-blue-500">
-                                <Avatar className="w-10 h-10 border hover:opacity-90 transition-opacity cursor-pointer">
-                                    <AvatarImage src={author?.photo} alt={author?.name} />
-                                    <AvatarFallback>{author?.name?.charAt(0) || "U"}</AvatarFallback>
-                                </Avatar>
-                            </button>
-                            <div className="flex flex-col">
-                                <button
-                                    onClick={goToAuthorProfile}
-                                    className="font-semibold text-sm sm:text-base text-zinc-900 dark:text-zinc-100 hover:underline text-left"
-                                >
-                                    {author?.name || "Anonymous"}
-                                </button>
-                                <span className="flex items-center gap-1 text-xs text-zinc-500">
-                                    {formattedTime} • {privacyIcon(post.type)} {privacyLabel(post.type)}
+                    <div className="p-4 sm:p-5 flex items-start justify-between gap-3">
+                        <button
+                            type="button"
+                            onClick={goToAuthorProfile}
+                            disabled={!authorId}
+                            title={authorId ? `View ${author?.name || "author"}'s profile` : undefined}
+                            className="group flex min-w-0 items-center gap-3 rounded-xl text-left outline-none transition-opacity hover:opacity-80 focus-visible:ring-2 focus-visible:ring-blue-500 disabled:cursor-default disabled:hover:opacity-100"
+                        >
+                            <Avatar className="h-10 w-10 shrink-0 border border-slate-200 dark:border-slate-700">
+                                <AvatarImage src={author?.photo} alt={author?.name} className="object-cover" />
+                                <AvatarFallback className="bg-gradient-to-br from-blue-600 to-indigo-600 text-sm font-bold text-white">
+                                    {author?.name?.charAt(0)?.toUpperCase() || "U"}
+                                </AvatarFallback>
+                            </Avatar>
+                            <div className="flex flex-col min-w-0">
+                                <span className="truncate text-sm font-bold text-slate-900 transition-colors group-hover:text-blue-600 dark:text-slate-100 dark:group-hover:text-blue-400 sm:text-base">
+                                    {author?.name || "Anonymous User"}
                                 </span>
+                                <div className="flex items-center gap-1.5 text-xs text-slate-400">
+                                    <span>{formattedTime}</span>
+                                    <span>•</span>
+                                    <span className="flex items-center gap-1">
+                                        {privacyIcon(post.type)}
+                                        <span>{privacyLabel(post.type)}</span>
+                                    </span>
+                                </div>
                             </div>
-                        </div>
+                        </button>
 
-                        {/* Three-dot menu — only for own posts */}
-                        {isMyPost ? (
-                            <DropdownMenu>
-                                <DropdownMenuTrigger asChild>
-                                    <Button variant="ghost" size="icon" className="text-zinc-500 hover:bg-zinc-100 dark:hover:bg-zinc-900 rounded-full h-9 w-9">
-                                        <MoreHorizontal className="w-5 h-5" />
-                                    </Button>
-                                </DropdownMenuTrigger>
-                                <DropdownMenuContent align="end" className="w-44 rounded-xl shadow-lg p-1">
+                        {/* Dropdown Menu */}
+                        <DropdownMenu>
+                            <DropdownMenuTrigger asChild>
+                                <Button
+                                    variant="ghost"
+                                    size="icon"
+                                    className="text-slate-400 hover:text-slate-700 dark:hover:text-slate-200 hover:bg-slate-100 dark:hover:bg-slate-800 rounded-full h-8 w-8 shrink-0"
+                                >
+                                    <MoreHorizontal className="w-4 h-4" />
+                                </Button>
+                            </DropdownMenuTrigger>
+                            <DropdownMenuContent align="end" className="w-48 rounded-2xl shadow-xl p-1.5 border-slate-200 dark:border-slate-800">
+                                {isMyPost && (
+                                    <>
+                                        <DropdownMenuItem
+                                            onClick={() => {
+                                                setIsEditing(true);
+                                                setEditBody(post.body || "");
+                                            }}
+                                            className="cursor-pointer rounded-xl px-3 py-2 gap-2.5 font-medium text-xs text-slate-700 dark:text-slate-200"
+                                        >
+                                            <Pencil className="w-3.5 h-3.5 text-slate-400" />
+                                            Edit Post
+                                        </DropdownMenuItem>
+                                        <DropdownMenuSeparator className="my-1 opacity-50" />
+                                    </>
+                                )}
+                                <DropdownMenuItem
+                                    onClick={handleShare}
+                                    className="cursor-pointer rounded-xl px-3 py-2 gap-2.5 font-medium text-xs text-slate-700 dark:text-slate-200"
+                                >
+                                    <Copy className="w-3.5 h-3.5 text-slate-400" />
+                                    Copy Post Link
+                                </DropdownMenuItem>
+                                {!isMyPost && authorId && (
                                     <DropdownMenuItem
-                                        onClick={() => { setIsEditing(true); setEditBody(post.body || ""); }}
-                                        className="cursor-pointer rounded-lg px-3 py-2.5 gap-3 font-medium text-zinc-700 dark:text-zinc-200"
+                                        onClick={goToAuthorProfile}
+                                        className="cursor-pointer rounded-xl px-3 py-2 gap-2.5 font-medium text-xs text-slate-700 dark:text-slate-200"
                                     >
-                                        <Pencil className="w-4 h-4 text-zinc-400" />
-                                        Edit Post
+                                        <ExternalLink className="w-3.5 h-3.5 text-slate-400" />
+                                        View Author Profile
                                     </DropdownMenuItem>
-                                    <DropdownMenuSeparator className="my-1 opacity-50" />
-                                    <DropdownMenuItem
-                                        onClick={() => setShowDeleteDialog(true)}
-                                        className="cursor-pointer rounded-lg px-3 py-2.5 gap-3 font-medium text-red-600 dark:text-red-400 focus:bg-red-50 dark:focus:bg-red-950/40"
-                                    >
-                                        <Trash2 className="w-4 h-4" />
-                                        Delete Post
-                                    </DropdownMenuItem>
-                                </DropdownMenuContent>
-                            </DropdownMenu>
-                        ) : (
-                            <Button variant="ghost" size="icon" className="text-zinc-500 hover:bg-zinc-100 dark:hover:bg-zinc-900 rounded-full h-9 w-9">
-                                <MoreHorizontal className="w-5 h-5" />
-                            </Button>
-                        )}
+                                )}
+                            </DropdownMenuContent>
+                        </DropdownMenu>
                     </div>
 
                     {/* ── Edit Mode ── */}
@@ -253,24 +328,28 @@ export default function PostItem({ post }: PostItemProps) {
                         <div className="px-4 sm:px-5 pb-4 space-y-3">
                             <textarea
                                 value={editBody}
-                                onChange={e => setEditBody(e.target.value)}
-                                rows={4}
+                                onChange={(e) => setEditBody(e.target.value)}
+                                rows={3}
                                 autoFocus
-                                className="w-full bg-zinc-50 dark:bg-zinc-900 border border-zinc-200 dark:border-zinc-700 rounded-xl p-3 text-sm text-zinc-800 dark:text-zinc-100 resize-none outline-none focus:ring-2 focus:ring-blue-500/30 transition"
+                                className="w-full bg-slate-50 dark:bg-slate-950 border border-slate-200 dark:border-slate-800 rounded-xl p-3 text-sm text-slate-800 dark:text-slate-100 resize-none outline-none focus:ring-2 focus:ring-blue-500/20"
                             />
 
-                            {/* Edit image preview */}
                             {(editImagePreview || post.image) && (
-                                <div className="relative rounded-xl overflow-hidden border border-zinc-200 dark:border-zinc-700 group">
+                                <div className="relative rounded-xl overflow-hidden border border-slate-200 dark:border-slate-800 group max-h-[260px] bg-slate-900 flex items-center justify-center">
                                     <img
                                         src={editImagePreview || post.image}
-                                        alt="edit preview"
-                                        className="w-full max-h-[260px] object-contain bg-zinc-100 dark:bg-zinc-900"
+                                        alt="Edit preview"
+                                        className="w-full max-h-[260px] object-contain"
                                     />
                                     {editImagePreview && (
                                         <button
-                                            onClick={() => { URL.revokeObjectURL(editImagePreview); setEditImagePreview(null); setEditImageFile(null); }}
-                                            className="absolute top-2 right-2 bg-zinc-900/70 text-white rounded-full p-1 hover:bg-zinc-900 transition"
+                                            type="button"
+                                            onClick={() => {
+                                                URL.revokeObjectURL(editImagePreview);
+                                                setEditImagePreview(null);
+                                                setEditImageFile(null);
+                                            }}
+                                            className="absolute top-2 right-2 bg-slate-900/80 text-white rounded-full p-1.5 hover:bg-slate-900 transition"
                                         >
                                             <X className="w-4 h-4" />
                                         </button>
@@ -280,27 +359,40 @@ export default function PostItem({ post }: PostItemProps) {
 
                             <div className="flex items-center justify-between pt-1">
                                 <button
+                                    type="button"
                                     onClick={() => editFileRef.current?.click()}
-                                    className="text-xs text-blue-500 hover:underline font-medium"
+                                    className="text-xs text-blue-600 hover:underline font-semibold"
                                 >
-                                    {post.image ? "Change photo" : "Add photo"}
+                                    {post.image ? "Change photo" : "+ Add photo"}
                                 </button>
-                                <input type="file" accept="image/*" ref={editFileRef} className="hidden" onChange={handleEditImageChange} />
+                                <input
+                                    type="file"
+                                    accept="image/*"
+                                    ref={editFileRef}
+                                    className="hidden"
+                                    onChange={handleEditImageChange}
+                                />
                                 <div className="flex gap-2">
-                                    <Button variant="outline" size="sm" onClick={cancelEdit} className="rounded-full h-8 px-4 gap-1.5">
-                                        <X className="w-3.5 h-3.5" /> Cancel
+                                    <Button
+                                        variant="outline"
+                                        size="sm"
+                                        onClick={cancelEdit}
+                                        className="rounded-xl h-8 px-3 text-xs"
+                                    >
+                                        Cancel
                                     </Button>
                                     <Button
                                         size="sm"
                                         onClick={() => updateMutation.mutate()}
                                         disabled={updateMutation.isPending || !editBody.trim()}
-                                        className="rounded-full h-8 px-4 gap-1.5 bg-blue-500 hover:bg-blue-600 text-white"
+                                        className="rounded-xl h-8 px-4 text-xs font-bold bg-blue-600 hover:bg-blue-700 text-white gap-1.5"
                                     >
-                                        {updateMutation.isPending
-                                            ? <Loader2 className="w-3.5 h-3.5 animate-spin" />
-                                            : <Check className="w-3.5 h-3.5" />
-                                        }
-                                        Save
+                                        {updateMutation.isPending ? (
+                                            <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                                        ) : (
+                                            <Check className="w-3.5 h-3.5" />
+                                        )}
+                                        Save Changes
                                     </Button>
                                 </div>
                             </div>
@@ -309,162 +401,194 @@ export default function PostItem({ post }: PostItemProps) {
                         <>
                             {/* ── Post Body ── */}
                             {post.body && (
-                                <div className="px-4 sm:px-5 pb-3">
-                                    <p className="text-sm sm:text-base text-zinc-800 dark:text-zinc-200 whitespace-pre-wrap">
+                                <div className="px-4 sm:px-5 pb-3.5">
+                                    <p className="text-sm sm:text-base text-slate-800 dark:text-slate-200 whitespace-pre-wrap leading-relaxed">
                                         {post.body}
                                     </p>
                                 </div>
                             )}
 
-                            {/* ── Post Image ── */}
+                            {/* ── Post Image with Lightbox Trigger ── */}
                             {post.image && (
-                                <div className="w-full bg-zinc-100 dark:bg-zinc-900 max-h-[500px] overflow-hidden flex items-center justify-center">
+                                <div
+                                    className="relative w-full bg-slate-950 max-h-[520px] overflow-hidden flex items-center justify-center cursor-pointer group"
+                                    onClick={() => setShowLightbox(true)}
+                                >
                                     <img
                                         src={post.image}
                                         alt="Post attachment"
-                                        className="w-full h-auto max-h-[500px] object-contain"
+                                        className="w-full h-auto max-h-[520px] object-contain transition-transform duration-300 group-hover:scale-[1.01]"
                                         loading="lazy"
                                     />
+                                    <div className="absolute bottom-2 right-2 p-1.5 bg-black/60 text-white rounded-lg opacity-0 group-hover:opacity-100 transition-opacity flex items-center gap-1 text-xs">
+                                        <Maximize2 className="w-3.5 h-3.5" />
+                                        <span>Click to view</span>
+                                    </div>
                                 </div>
                             )}
                         </>
                     )}
 
-                    {/* ── Stats Bar ── */}
-                    <div className="px-4 sm:px-5 py-2 flex items-center justify-between text-xs text-zinc-500 border-b border-zinc-100 dark:border-zinc-800/60">
-                        <div className="flex items-center gap-1">
-                            <div className="bg-blue-500 rounded-full p-1 border-2 border-white dark:border-zinc-950">
-                                <Heart className="w-3 h-3 text-white fill-current" />
-                            </div>
-                            <span className="ml-1">{likesCount}</span>
-                        </div>
-                        <div className="flex items-center gap-4">
-                            <span className="hover:underline cursor-pointer" onClick={() => setShowComments(!showComments)}>
-                                {post.commentsCount || 0} Comments
+                    {/* ── Stats Row ── */}
+                    <div className="px-4 sm:px-5 py-2.5 flex items-center justify-between text-xs text-slate-500 border-b border-slate-100 dark:border-slate-800/80">
+                        <div className="flex items-center gap-1.5">
+                            <span className="p-1 bg-red-500 text-white rounded-full flex items-center justify-center">
+                                <Heart className="w-2.5 h-2.5 fill-current" />
                             </span>
+                            <span className="font-semibold text-slate-700 dark:text-slate-300">{likesCount} likes</span>
+                        </div>
+                        <div className="flex items-center gap-3">
+                            <button
+                                onClick={() => setShowComments(!showComments)}
+                                className="hover:underline cursor-pointer hover:text-blue-600 transition-colors"
+                            >
+                                {post.commentsCount || commentsList.length || 0} Comments
+                            </button>
                         </div>
                     </div>
 
-                    {/* ── Action Buttons ── */}
-                    <div className="px-2 py-1 flex items-center">
+                    {/* ── Action Buttons Bar ── */}
+                    <div className="px-2 py-1 flex items-center justify-between gap-1">
                         <Button
                             variant="ghost"
                             onClick={() => likeMutation.mutate()}
-                            className={cn("flex-1 rounded-lg h-10 gap-2",
+                            className={cn(
+                                "flex-1 rounded-xl h-9 gap-2 text-xs font-bold transition-all",
                                 isLiked
-                                    ? "text-blue-600 dark:text-blue-500 hover:bg-blue-50 dark:hover:bg-blue-900/20"
-                                    : "text-zinc-600 dark:text-zinc-400 hover:bg-zinc-100 dark:hover:bg-zinc-900"
+                                    ? "text-red-600 dark:text-red-500 hover:bg-red-50 dark:hover:bg-red-950/30"
+                                    : "text-slate-600 dark:text-slate-400 hover:bg-slate-100 dark:hover:bg-slate-800"
                             )}
                         >
-                            <Heart className={cn("w-5 h-5", isLiked && "fill-current")} />
-                            <span className="font-medium">Like</span>
+                            <Heart
+                                className={cn(
+                                    "w-4 h-4 transition-transform duration-200",
+                                    isLiked && "fill-current text-red-500",
+                                    likeBouncing && "scale-130"
+                                )}
+                            />
+                            <span>{isLiked ? "Liked" : "Like"}</span>
                         </Button>
+
                         <Button
                             variant="ghost"
                             onClick={() => setShowComments(!showComments)}
-                            className={cn("flex-1 rounded-lg h-10 gap-2",
+                            className={cn(
+                                "flex-1 rounded-xl h-9 gap-2 text-xs font-bold transition-colors",
                                 showComments
-                                    ? "text-blue-600 dark:text-blue-500 hover:bg-blue-50 dark:hover:bg-blue-900/20"
-                                    : "text-zinc-600 dark:text-zinc-400 hover:bg-zinc-100 dark:hover:bg-zinc-900"
+                                    ? "text-blue-600 dark:text-blue-400 hover:bg-blue-50 dark:hover:bg-blue-950/30"
+                                    : "text-slate-600 dark:text-slate-400 hover:bg-slate-100 dark:hover:bg-slate-800"
                             )}
                         >
-                            <MessageCircle className={cn("w-5 h-5", showComments && "fill-current")} />
-                            <span className="font-medium">Comment</span>
+                            <MessageCircle className={cn("w-4 h-4", showComments && "fill-current")} />
+                            <span>Comment</span>
                         </Button>
+
                         <Button
                             variant="ghost"
                             onClick={() => saveMutation.mutate()}
-                            className={cn("flex-1 rounded-lg h-10 gap-2",
+                            className={cn(
+                                "flex-1 rounded-xl h-9 gap-2 text-xs font-bold transition-colors",
                                 isSaved
-                                    ? "text-blue-600 dark:text-blue-500 hover:bg-blue-50 dark:hover:bg-blue-900/20"
-                                    : "text-zinc-600 dark:text-zinc-400 hover:bg-zinc-100 dark:hover:bg-zinc-900"
+                                    ? "text-blue-600 dark:text-blue-400 hover:bg-blue-50 dark:hover:bg-blue-950/30"
+                                    : "text-slate-600 dark:text-slate-400 hover:bg-slate-100 dark:hover:bg-slate-800"
                             )}
                         >
-                            <Bookmark className={cn("w-5 h-5", isSaved && "fill-current")} />
-                            <span className="font-medium">Save</span>
+                            <Bookmark className={cn("w-4 h-4", isSaved && "fill-current")} />
+                            <span>{isSaved ? "Saved" : "Save"}</span>
                         </Button>
+
                         <Button
                             variant="ghost"
-                            className="hidden sm:flex flex-1 text-zinc-600 dark:text-zinc-400 hover:bg-zinc-100 dark:hover:bg-zinc-900 rounded-lg h-10 gap-2"
+                            onClick={handleShare}
+                            className="hidden sm:flex flex-1 text-slate-600 dark:text-slate-400 hover:bg-slate-100 dark:hover:bg-slate-800 rounded-xl h-9 gap-2 text-xs font-bold"
                         >
-                            <Share2 className="w-5 h-5" />
-                            <span className="font-medium">Share</span>
+                            <Share2 className="w-4 h-4" />
+                            <span>Share</span>
                         </Button>
                     </div>
 
                     {/* ── Comments Section ── */}
                     {showComments && (
-                        <div className="px-4 sm:px-5 py-4 border-t border-zinc-100 dark:border-zinc-800/60 bg-zinc-50/50 dark:bg-zinc-900/10">
-
+                        <div className="px-4 sm:px-5 py-4 border-t border-slate-100 dark:border-slate-800/80 bg-slate-50/60 dark:bg-slate-950/30 animate-in fade-in duration-200">
                             {/* Comment Input */}
-                            <form onSubmit={handleCommentSubmit} className="flex gap-3 mb-5">
-                                <Avatar className="w-8 h-8 border shrink-0">
-                                    <AvatarImage src={(user as any)?.user?.photo || (user as any)?.photo || ""} />
-                                    <AvatarFallback className="text-xs font-bold">
-                                        {((user as any)?.user?.name || (user as any)?.name || "U").charAt(0).toUpperCase()}
+                            <form onSubmit={handleCommentSubmit} className="flex gap-2.5 mb-4">
+                                <Avatar className="w-8 h-8 border border-slate-200 dark:border-slate-700 shrink-0">
+                                    <AvatarImage src={user?.photo || ""} />
+                                    <AvatarFallback className="text-xs font-bold bg-blue-100 text-blue-600">
+                                        {(user?.name || "U").charAt(0)?.toUpperCase()}
                                     </AvatarFallback>
                                 </Avatar>
                                 <div className="flex-1 relative flex items-center">
                                     <input
                                         type="text"
                                         value={commentText}
-                                        onChange={e => setCommentText(e.target.value)}
+                                        onChange={(e) => setCommentText(e.target.value)}
                                         placeholder="Write a comment..."
-                                        className="w-full bg-zinc-100 dark:bg-zinc-900 rounded-full py-2 pl-4 pr-10 text-sm outline-none focus:ring-2 focus:ring-blue-500/30 text-zinc-900 dark:text-zinc-100 placeholder:text-zinc-400 border-none transition"
+                                        className="w-full bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-full py-2 pl-4 pr-10 text-xs sm:text-sm outline-none focus:ring-2 focus:ring-blue-500/20 text-slate-900 dark:text-slate-100 placeholder:text-slate-400 transition"
                                         disabled={commentMutation.isPending}
                                     />
                                     <button
                                         type="submit"
                                         disabled={!commentText.trim() || commentMutation.isPending}
-                                        className="absolute right-2 p-1.5 text-blue-500 hover:bg-zinc-200 dark:hover:bg-zinc-800 rounded-full transition-colors disabled:opacity-40"
+                                        className="absolute right-1.5 p-1.5 text-blue-600 hover:bg-blue-50 dark:hover:bg-blue-950/40 rounded-full transition-colors disabled:opacity-30 cursor-pointer"
+                                        aria-label="Send comment"
                                     >
-                                        {commentMutation.isPending
-                                            ? <Loader2 className="w-4 h-4 animate-spin" />
-                                            : <Send className="w-4 h-4" />
-                                        }
+                                        {commentMutation.isPending ? (
+                                            <Loader2 className="w-4 h-4 animate-spin" />
+                                        ) : (
+                                            <Send className="w-4 h-4" />
+                                        )}
                                     </button>
                                 </div>
                             </form>
 
-                            {/* Loading */}
+                            {/* Loading State */}
                             {loadingComments && (
                                 <div className="flex justify-center py-4">
-                                    <Loader2 className="w-6 h-6 animate-spin text-blue-500" />
+                                    <Loader2 className="w-5 h-5 animate-spin text-blue-500" />
                                 </div>
                             )}
 
-                            {/* Comments List */}
-                            <div className="space-y-4">
-                                {commentsList.map((comment: any) => (
-                                    <div key={comment._id || comment.id} className="flex gap-3">
-                                        <Avatar className="w-8 h-8 border shrink-0">
-                                            <AvatarImage src={comment.commentCreator?.photo || comment.user?.photo} />
-                                            <AvatarFallback className="text-xs font-bold">
-                                                {(comment.commentCreator?.name || comment.user?.name || "U").charAt(0).toUpperCase()}
-                                            </AvatarFallback>
-                                        </Avatar>
-                                        <div className="flex-1 min-w-0">
-                                            <div className="bg-zinc-100 dark:bg-zinc-900 rounded-2xl px-4 py-2.5 inline-block max-w-[95%]">
-                                                <span className="font-semibold text-xs text-zinc-900 dark:text-zinc-100 block mb-0.5">
-                                                    {comment.commentCreator?.name || comment.user?.name || "Anonymous"}
-                                                </span>
-                                                <p className="text-sm text-zinc-800 dark:text-zinc-200 break-words leading-snug">
-                                                    {comment.content || comment.text || comment.body}
-                                                </p>
-                                            </div>
-                                            <div className="flex items-center gap-3 px-2 mt-1 text-xs text-zinc-400 font-medium">
-                                                <span className="cursor-pointer hover:text-blue-500 transition-colors">Like</span>
-                                                <span className="cursor-pointer hover:text-blue-500 transition-colors">Reply</span>
-                                                {comment.createdAt && (
-                                                    <span className="font-normal">{formatDistanceToNow(new Date(comment.createdAt), { addSuffix: true })}</span>
-                                                )}
+                            {/* Comments Stream */}
+                            <div className="space-y-3 max-h-[360px] overflow-y-auto pr-1">
+                                {commentsList.map((comment: any) => {
+                                    const creator = comment.commentCreator || comment.user || {};
+                                    const cName = creator.name || "Anonymous";
+                                    const cPhoto = creator.photo || "";
+                                    const cTime = comment.createdAt
+                                        ? formatDistanceToNow(new Date(comment.createdAt), { addSuffix: true })
+                                        : "recently";
+
+                                    return (
+                                        <div key={comment._id || comment.id} className="flex gap-2.5 items-start">
+                                            <Avatar className="w-7 h-7 border border-slate-200 dark:border-slate-700 shrink-0 mt-0.5">
+                                                <AvatarImage src={cPhoto} alt={cName} className="object-cover" />
+                                                <AvatarFallback className="text-[10px] font-bold bg-blue-100 text-blue-700">
+                                                    {cName.charAt(0)?.toUpperCase()}
+                                                </AvatarFallback>
+                                            </Avatar>
+                                            <div className="flex-1 min-w-0">
+                                                <div className="bg-white dark:bg-slate-900 border border-slate-200/80 dark:border-slate-800/80 rounded-2xl px-3.5 py-2 inline-block max-w-[95%] shadow-xs">
+                                                    <span className="font-bold text-xs text-slate-900 dark:text-slate-100 block mb-0.5">
+                                                        {cName}
+                                                    </span>
+                                                    <p className="text-xs sm:text-sm text-slate-800 dark:text-slate-200 break-words leading-relaxed">
+                                                        {comment.content || comment.text || comment.body}
+                                                    </p>
+                                                </div>
+                                                <div className="flex items-center gap-3 px-2 mt-1 text-[11px] text-slate-400 font-medium">
+                                                    <span className="cursor-pointer hover:text-blue-600 transition-colors">Like</span>
+                                                    <span className="cursor-pointer hover:text-blue-600 transition-colors">Reply</span>
+                                                    <span>{cTime}</span>
+                                                </div>
                                             </div>
                                         </div>
-                                    </div>
-                                ))}
+                                    );
+                                })}
+
                                 {!loadingComments && commentsList.length === 0 && (
-                                    <p className="text-center text-sm text-zinc-400 py-3">
-                                        No comments yet. Be the first!
+                                    <p className="text-center text-xs text-slate-400 py-3 font-medium">
+                                        No comments yet. Be the first to start the conversation!
                                     </p>
                                 )}
                             </div>
@@ -473,34 +597,28 @@ export default function PostItem({ post }: PostItemProps) {
                 </CardContent>
             </Card>
 
-            {/* ── Delete Confirmation Overlay ── */}
-            {showDeleteDialog && (
-                <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-sm p-4">
-                    <div className="bg-white dark:bg-zinc-950 rounded-2xl shadow-2xl max-w-sm w-full p-6 border border-zinc-200 dark:border-zinc-800 animate-in fade-in zoom-in-95">
-                        <div className="flex items-center gap-3 mb-3">
-                            <div className="p-2 rounded-full bg-red-100 dark:bg-red-900/30">
-                                <Trash2 className="w-5 h-5 text-red-600 dark:text-red-400" />
-                            </div>
-                            <h3 className="text-base font-bold text-zinc-900 dark:text-zinc-50">Delete this post?</h3>
-                        </div>
-                        <p className="text-sm text-zinc-500 dark:text-zinc-400 ml-[3.25rem] mb-5 leading-relaxed">
-                            This action cannot be undone. The post and all its comments will be permanently deleted.
-                        </p>
-                        <div className="flex gap-3 justify-end">
-                            <Button variant="outline" className="rounded-full px-5" onClick={() => setShowDeleteDialog(false)}>
-                                Cancel
-                            </Button>
-                            <Button
-                                className="rounded-full px-5 bg-red-600 hover:bg-red-700 text-white gap-2"
-                                onClick={() => { setShowDeleteDialog(false); deleteMutation.mutate(); }}
-                            >
-                                {deleteMutation.isPending ? <Loader2 className="w-4 h-4 animate-spin" /> : <Trash2 className="w-4 h-4" />}
-                                Yes, delete it
-                            </Button>
-                        </div>
+            {/* ── Image Lightbox Modal ── */}
+            {showLightbox && post.image && (
+                <div
+                    className="fixed inset-0 z-50 flex items-center justify-center bg-black/90 backdrop-blur-md p-4 animate-in fade-in"
+                    onClick={() => setShowLightbox(false)}
+                >
+                    <div className="relative max-w-4xl max-h-[90vh] flex flex-col items-center" onClick={(e) => e.stopPropagation()}>
+                        <button
+                            onClick={() => setShowLightbox(false)}
+                            className="absolute -top-10 right-0 p-2 text-white/80 hover:text-white rounded-full bg-white/10 hover:bg-white/20 transition-colors cursor-pointer"
+                        >
+                            <X className="w-6 h-6" />
+                        </button>
+                        <img
+                            src={post.image}
+                            alt="Full post attachment"
+                            className="max-h-[85vh] max-w-full object-contain rounded-2xl shadow-2xl"
+                        />
                     </div>
                 </div>
             )}
+
         </>
     );
 }

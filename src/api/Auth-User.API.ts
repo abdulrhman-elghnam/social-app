@@ -1,10 +1,12 @@
+
+
 import { useAuthStore } from "@/store/authStore";
 import type { changePasswordType } from "@/types/user.type";
 import type { UserDataTypeModified, UserLoginType } from "@/types/validation";
 import axios from "axios";
 
 const getToken = () => useAuthStore.getState().token;
-const url = `${import.meta.env.VITE_API_URL}`;
+const url = import.meta.env.VITE_API_URL || "https://route-posts.routemisr.com";
 export function setSignUp(data: UserDataTypeModified) {
     return axios.post(`${url}/users/signup`, data, {
         headers: {
